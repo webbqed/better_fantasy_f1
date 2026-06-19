@@ -7,9 +7,6 @@ from f1.models.stats import driver_odds
 from f1.models.simulation import pl_theta_from_mix, monte_carlo, points_from_finishes, price_from_stats
 
 
-def _unique_combinations(df, col1, col2):
-    return list(df[[col1, col2]].drop_duplicates().itertuples(index=False))
-
 
 def run():
     """
@@ -26,21 +23,25 @@ def run():
     historical_results = historical_results.merge(historical_drivers, on=['session_key', 'driver_number'])
     historical_results = historical_results.replace(team_aliases)
 
-    driver_list = []
-    for driver_number, team_name in _unique_combinations(historical_results, 'driver_number', 'team_name'):
+    # Determine current grid from the most recent session; each driver gets exactly
+    # one entry using their current team (handles mid-season team changes cleanly).
+    most_recent_session = historical_sessions.iloc[0]['session_key']
+    recent = historical_results[historical_results['session_key'] == most_recent_session]
+    current_team_by_driver = (
+        recent.drop_duplicates('driver_number')
+        .set_index('driver_number')['team_name']
+        .to_dict()
+    )
+
+    current_drivers = []
+    for driver_number, team_name in current_team_by_driver.items():
         priors = CAR_PRIORS[prior_year].get(team_name, CAR_PRIORS[prior_year]['default'])
-        driver_list.append(driver_odds(
+        current_drivers.append(driver_odds(
             driver_number, team_name, historical_results,
             dnf_prior=priors.dnf_prior,
             win_prior=priors.win_prior,
             expected_finish_prior=priors.expected_finish_prior,
         ))
-
-    most_recent_session = historical_sessions.iloc[0]['session_key']
-    current_grid = set(
-        historical_results[historical_results['session_key'] == most_recent_session]['driver_number']
-    )
-    current_drivers = [d for d in driver_list if d.driver_number in current_grid]
 
     thetas = pl_theta_from_mix(
         [d.win_prob for d in current_drivers],
