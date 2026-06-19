@@ -473,7 +473,7 @@ def points_from_finishes(positions, point_values, dnf_value):
     return points
 
 
-def price_from_stats(mean, std, risk_discount_factor=0.1, K=5.0):
+def price_from_stats(mean, std, risk_discount_factor=0.1, K=50):
     """
     Convert mean and standard deviation to price.
     - mean: expected points
@@ -532,8 +532,10 @@ if __name__ == "__main__":
         driver.sim_std = np.std(driver.sim_points)
         driver.price = price_from_stats(driver.sim_mean, driver.sim_std)
         print(driver.full_name, round(driver.price, 2), round((1000/driver.price)*driver.sim_mean, 2))
-
-
+        print(driver.full_name, round(driver.price, 2), round((1000/driver.price)*driver.sim_points[55], 2))
+        print(driver.full_name, round(driver.price, 2), round((1000/driver.price)*driver.sim_points[95], 2))
+    
+    
 
 print('end of simulation')
 
