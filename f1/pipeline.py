@@ -36,8 +36,11 @@ def run():
             expected_finish_prior=priors.expected_finish_prior,
         ))
 
-    # TODO: replace with proper active-grid detection (phase 4)
-    current_drivers = driver_list[:20]
+    most_recent_session = historical_sessions.iloc[0]['session_key']
+    current_grid = set(
+        historical_results[historical_results['session_key'] == most_recent_session]['driver_number']
+    )
+    current_drivers = [d for d in driver_list if d.driver_number in current_grid]
 
     thetas = pl_theta_from_mix(
         [d.win_prob for d in current_drivers],
