@@ -32,14 +32,27 @@ CAR_PRIORS = {
         "Williams":         TeamPriors(dnf_prior=0.10, win_prior=0.00, expected_finish_prior=10.0),
         "Racing Bulls":     TeamPriors(dnf_prior=0.10, win_prior=0.00, expected_finish_prior=9.0),
         "default":     TeamPriors(dnf_prior=0.10, win_prior=0.00, expected_finish_prior=8.5),
-        # ... fill out the grid
     },
-    # 2024: {...}  # you can keep per-season tables if you want
+    2026: {
+        "Red Bull Racing":  TeamPriors(dnf_prior=0.07, win_prior=0.01, expected_finish_prior=8.0),
+        "McLaren":          TeamPriors(dnf_prior=0.06, win_prior=0.10, expected_finish_prior=4.0),
+        "Ferrari":          TeamPriors(dnf_prior=0.08, win_prior=0.01, expected_finish_prior=7.0),
+        "Mercedes":         TeamPriors(dnf_prior=0.08, win_prior=0.07, expected_finish_prior=7.0),
+        "Aston Martin":     TeamPriors(dnf_prior=0.11, win_prior=0.02, expected_finish_prior=11.0),
+        "Alpine":           TeamPriors(dnf_prior=0.12, win_prior=0.00, expected_finish_prior=13.0),
+        "Haas F1 Team":     TeamPriors(dnf_prior=0.12, win_prior=0.00, expected_finish_prior=12.0),
+        "Audi":             TeamPriors(dnf_prior=0.12, win_prior=0.00, expected_finish_prior=13.0),
+        "Williams":         TeamPriors(dnf_prior=0.10, win_prior=0.00, expected_finish_prior=10.0),
+        "Racing Bulls":     TeamPriors(dnf_prior=0.10, win_prior=0.00, expected_finish_prior=10.0),
+        "Cadillac":         TeamPriors(dnf_prior=0.15, win_prior=0.00, expected_finish_prior=16.0),
+        "default":          TeamPriors(dnf_prior=0.10, win_prior=0.00, expected_finish_prior=8.5),
+    },
 }
 
 team_aliases = {
     "RB": "Racing Bulls",
-    "AlphaTauri": "Racing Bulls"
+    "AlphaTauri": "Racing Bulls",
+    "Kick Sauber": "Audi",
     }
 
 
@@ -124,24 +137,34 @@ BASE_URL = "https://api.openf1.org/v1"
 def fetch_openf1(endpoint: str, **params):
     """
     Fetch data from the OpenF1 API.
-    
+
     Args:
         endpoint (str): e.g. "sessions", "drivers", "laps", "session_result"
         **params: query parameters (like year=2023)
-    
+
     Returns:
         Parsed JSON (Python list/dict)
     """
     url = f"{BASE_URL}/{endpoint}"
-    resp = requests.get(url, params=params, timeout=10)
+    for attempt in range(5):
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code == 429:
+            wait = 2 ** attempt
+            print(f"Rate limited, retrying in {wait}s...")
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp.json()
     resp.raise_for_status()
-    return resp.json()
 
 def get_n_last_sessions(years, n=40):
     sessions = []
     for year in years:
         sessions.extend(fetch_openf1('sessions', year=year, session_name="Race"))
     df = pd.DataFrame(sessions)
+    df['date_start'] = pd.to_datetime(df['date_start'], utc=True)
+    now = pd.Timestamp.now(tz='UTC')
+    df = df[(df['date_start'] < now) & (~df['is_cancelled'].astype(bool))]
     sorted_df = df.sort_values(by='date_start', ascending=False)
     return sorted_df[:n]
 
@@ -149,14 +172,14 @@ def get_n_last_results(sessions):
     results = []
     for session in sessions:
         results.extend(fetch_openf1('session_result', session_key = session))
-        time.sleep(.3)
+        time.sleep(2.0)
     return pd.DataFrame(results)
 
 def get_n_last_drivers(sessions):
     results = []
     for session in sessions:
         results.extend(fetch_openf1('drivers', session_key = session))
-        time.sleep(.3)
+        time.sleep(2.0)
     return pd.DataFrame(results)
 
 def get_unique_combinations(df, column1, column2):
@@ -499,18 +522,19 @@ if __name__ == "__main__":
     historical_results = historical_results.merge( historical_drivers, on=['session_key', 'driver_number'])
     historical_results = historical_results.replace(team_aliases)
     
+    prior_year = min(current_year, max(CAR_PRIORS.keys()))
     driver_list = []
-    for driver_number, team_name in get_unique_combinations(historical_results, 'driver_number', 'team_name'):        
+    for driver_number, team_name in get_unique_combinations(historical_results, 'driver_number', 'team_name'):
         try:
             driver_list.append(driver_odds(driver_number, team_name, historical_results,
-                                           dnf_prior = CAR_PRIORS[2025][team_name].dnf_prior,
-                                           win_prior = CAR_PRIORS[2025][team_name].win_prior,
-                                           expected_finish_prior = CAR_PRIORS[2025][team_name].expected_finish_prior))
+                                           dnf_prior = CAR_PRIORS[prior_year][team_name].dnf_prior,
+                                           win_prior = CAR_PRIORS[prior_year][team_name].win_prior,
+                                           expected_finish_prior = CAR_PRIORS[prior_year][team_name].expected_finish_prior))
         except KeyError:
             driver_list.append(driver_odds(driver_number, team_name, historical_results,
-                                           dnf_prior = CAR_PRIORS[2025]['default'].dnf_prior,
-                                           win_prior = CAR_PRIORS[2025]['default'].win_prior,
-                                           expected_finish_prior = CAR_PRIORS[2025]['default'].expected_finish_prior))
+                                           dnf_prior = CAR_PRIORS[prior_year]['default'].dnf_prior,
+                                           win_prior = CAR_PRIORS[prior_year]['default'].win_prior,
+                                           expected_finish_prior = CAR_PRIORS[prior_year]['default'].expected_finish_prior))
     
     # Get the list of current drivers (current logic just grabs the 20 who raced last. Need to fix)
     current_drivers = driver_list[:20]

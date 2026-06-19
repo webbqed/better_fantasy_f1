@@ -1,0 +1,18 @@
+# Python environments
+.conda/
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Spyder IDE
+.spyderproject.cfg
+.spyproject/
+
+# OS
+.DS_Store
+Thumbs.db
