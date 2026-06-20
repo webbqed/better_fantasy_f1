@@ -58,6 +58,32 @@ def seed_drivers(drivers, api_base=API_BASE_URL):
     return created
 
 
+def reconcile_active_drivers(drivers, api_base=API_BASE_URL):
+    """Sync each driver's is_active flag to the current grid.
+
+    Drivers in the current grid are marked active; everyone else inactive. This
+    ONLY flips the flag — it never touches portfolio holdings, so a user's
+    investment in a driver who drops off the grid stays intact (they can choose
+    to sell). Returns (reactivated, deactivated) counts.
+    """
+    active_numbers = {int(d.driver_number) for d in drivers}
+    db_drivers = requests.get(f"{api_base}/drivers", timeout=30).json()
+
+    reactivated = deactivated = 0
+    for d in db_drivers:
+        desired = d["driver_number"] in active_numbers
+        if d["is_active"] == desired:
+            continue
+        requests.patch(
+            f"{api_base}/drivers/{d['id']}", json={"is_active": desired}, timeout=30
+        ).raise_for_status()
+        if desired:
+            reactivated += 1
+        else:
+            deactivated += 1
+    return reactivated, deactivated
+
+
 def write_prices(drivers, year, api_base=API_BASE_URL):
     """Append a price row per driver for the next upcoming race.
 

@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from f1.pipeline import run
 from f1.models.simulation import summarize_price_stats
-from scripts.db_sync import seed_races, seed_drivers, write_prices
+from scripts.db_sync import seed_races, seed_drivers, reconcile_active_drivers, write_prices
 
 if __name__ == "__main__":
     drivers = run()
@@ -64,9 +64,11 @@ if __name__ == "__main__":
     try:
         new_races = seed_races(year)
         new_drivers = seed_drivers(drivers)
+        reactivated, deactivated = reconcile_active_drivers(drivers)
         written, race = write_prices(drivers, year)
         print(f"  races seeded: {new_races} new")
         print(f"  drivers seeded: {new_drivers} new")
+        print(f"  active status: {reactivated} reactivated, {deactivated} deactivated")
         print(f"  prices written: {written} for round {race['round_number']} ({race['race_name']})")
     except requests.exceptions.ConnectionError:
         print("  ERROR: could not reach the API. Is the uvicorn server running?")
