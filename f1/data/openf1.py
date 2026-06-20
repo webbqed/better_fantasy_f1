@@ -30,6 +30,24 @@ def get_n_last_sessions(years, n=40):
     return df.sort_values(by='date_start', ascending=False).head(n)
 
 
+def get_season_calendar(year):
+    """Return all (non-cancelled) race sessions for a season, past and upcoming.
+
+    Unlike get_n_last_sessions, this keeps future races so we can seed the full
+    calendar. round_number is derived from date order (OpenF1 doesn't provide it),
+    and is_completed marks races whose start time is already in the past.
+    """
+    sessions = fetch_openf1('sessions', year=year, session_name="Race")
+    df = pd.DataFrame(sessions)
+    df['date_start'] = pd.to_datetime(df['date_start'], utc=True)
+    df = df[~df['is_cancelled'].astype(bool)]
+    df = df.sort_values('date_start').reset_index(drop=True)
+    df['round_number'] = df.index + 1
+    now = pd.Timestamp.now(tz='UTC')
+    df['is_completed'] = df['date_start'] < now
+    return df
+
+
 def get_n_last_results(sessions):
     results = []
     for session in sessions:

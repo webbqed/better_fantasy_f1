@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from api.database import engine
 from api.schemas import DriverPriceCreate, DriverPriceUpdate, DriverPriceResponse
-from db.models import DriverPrice
+from db.models import Driver, DriverPrice
 
 router = APIRouter(prefix="/driver-prices", tags=["Driver Prices"])
 
@@ -13,6 +13,24 @@ router = APIRouter(prefix="/driver-prices", tags=["Driver Prices"])
 def get_driver_prices():
     with Session(engine) as session:
         return session.execute(select(DriverPrice)).scalars().all()
+
+
+@router.get("/latest", response_model=list[DriverPriceResponse])
+def get_latest_driver_prices():
+    """Most recent price for each active driver.
+
+    Uses Postgres DISTINCT ON: ordering by driver_id then newest-first, and
+    keeping the first row per driver_id gives the latest price per driver.
+    """
+    with Session(engine) as session:
+        statement = (
+            select(DriverPrice)
+            .join(Driver, Driver.id == DriverPrice.driver_id)
+            .where(Driver.is_active.is_(True))
+            .distinct(DriverPrice.driver_id)
+            .order_by(DriverPrice.driver_id, DriverPrice.created_at.desc())
+        )
+        return session.execute(statement).scalars().all()
 
 
 @router.get("/{price_id}", response_model=DriverPriceResponse)

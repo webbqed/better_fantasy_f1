@@ -1,10 +1,14 @@
 import sys
 import os
+import datetime
 import numpy as np
+import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from f1.pipeline import run
+from f1.models.simulation import summarize_price_stats
+from scripts.db_sync import seed_races, seed_drivers, write_prices
 
 if __name__ == "__main__":
     drivers = run()
@@ -18,27 +22,23 @@ if __name__ == "__main__":
     print("-" * 90)
 
     for d in drivers:
-        results = d.sim_results
-        dnf_mask = results == -100
-        finishes = results[~dnf_mask]
+        stats = summarize_price_stats(d)
 
-        win_pct      = np.mean(results == 1) * 100
-        top3_pct     = np.mean((results <= 3) & ~dnf_mask) * 100
-        dnf_pct      = np.mean(dnf_mask) * 100
-        med_pos      = float(np.median(finishes))        if len(finishes) else float("nan")
-        p5           = float(np.percentile(finishes,  5)) if len(finishes) else float("nan")
-        p25          = float(np.percentile(finishes, 25)) if len(finishes) else float("nan")
-        std_per_100  = d.sim_std * (100 / d.price)
+        # Best5%/Best25% are display-only (not stored on DriverPrice).
+        results = d.sim_results
+        finishes = results[results != -100]
+        p5  = float(np.percentile(finishes,  5)) if len(finishes) else float("nan")
+        p25 = float(np.percentile(finishes, 25)) if len(finishes) else float("nan")
 
         print(col.format(
             d.full_name[:24],
-            f"{d.price:.1f}",
-            f"{win_pct:.1f}%",
-            f"{top3_pct:.1f}%",
-            f"{dnf_pct:.1f}%",
-            f"{d.sim_mean:.2f}",
-            f"{std_per_100:.2f}",
-            f"{med_pos:.0f}",
+            f"{stats['price']:.1f}",
+            f"{stats['win_prob'] * 100:.1f}%",
+            f"{stats['top3_prob'] * 100:.1f}%",
+            f"{stats['dnf_prob'] * 100:.1f}%",
+            f"{stats['avg_pts']:.2f}",
+            f"{stats['std_per_100']:.2f}",
+            f"{stats['median_position']:.0f}",
             f"{p5:.0f}",
             f"{p25:.0f}",
         ))
@@ -56,3 +56,17 @@ if __name__ == "__main__":
         "\n  Best5%   — finishing position in the best 5% of non-DNF simulations"
         "\n  Best25%  — finishing position in the best 25% of non-DNF simulations"
     )
+
+    # Push results to the database through the API. Requires the API server to
+    # be running (see API_BASE_URL in scripts/db_sync.py).
+    year = datetime.date.today().year
+    print("\nSyncing to database...")
+    try:
+        new_races = seed_races(year)
+        new_drivers = seed_drivers(drivers)
+        written, race = write_prices(drivers, year)
+        print(f"  races seeded: {new_races} new")
+        print(f"  drivers seeded: {new_drivers} new")
+        print(f"  prices written: {written} for round {race['round_number']} ({race['race_name']})")
+    except requests.exceptions.ConnectionError:
+        print("  ERROR: could not reach the API. Is the uvicorn server running?")

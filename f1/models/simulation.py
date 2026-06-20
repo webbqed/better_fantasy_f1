@@ -78,3 +78,24 @@ def price_from_stats(mean, std, risk_discount_factor=0.1, K=50):
     """Convert simulated mean and std of points into a driver price."""
     edge = float(np.maximum(mean - (risk_discount_factor * std), mean * 0.1))
     return K * edge
+
+
+def summarize_price_stats(driver):
+    """Derive the stored DriverPrice fields from a simulated Driver.
+
+    Probabilities are returned as 0-1 fractions (not percentages). This is the
+    single source of truth used by both the nightly printout and the DB write,
+    so the displayed numbers and the stored numbers can never drift apart.
+    """
+    results = np.asarray(driver.sim_results)
+    dnf_mask = results == -100
+    finishes = results[~dnf_mask]
+    return {
+        "price": float(driver.price),
+        "win_prob": float(np.mean(results == 1)),
+        "top3_prob": float(np.mean((results <= 3) & ~dnf_mask)),
+        "dnf_prob": float(np.mean(dnf_mask)),
+        "avg_pts": float(driver.sim_mean),
+        "std_per_100": float(driver.sim_std * (100 / driver.price)),
+        "median_position": float(np.median(finishes)) if len(finishes) else float("nan"),
+    }
